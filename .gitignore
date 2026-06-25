@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+
+# Generated analysis artifacts
+*.png
+*.csv
+*.out
+neutronics_output/
+
+# Keep the bundled input data tracked despite the *.h5 habit
+!data/neutronics_isotopics.h5

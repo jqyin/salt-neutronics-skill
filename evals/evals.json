@@ -1,0 +1,26 @@
+{
+  "skill_name": "salt-neutronics-tbr",
+  "evals": [
+    {
+      "id": 0,
+      "name": "single-tbr-query",
+      "prompt": "I'm scoping a FLiBe breeding blanket. If the salt is 35 mol% BeF2 and the lithium is enriched to 30% Li-6, what tritium breeding ratio would a Shift Monte Carlo run on Frontier give me? I don't want to actually queue an HPC job for this. Tell me the TBR and whether that composition is tritium self-sufficient.",
+      "expected_output": "TBR for (BeF2=35 mol%, Li-6=0.30) computed by interpolation: beryllium multiplier ~1.05, TBR ~1.34. Should state it is self-sufficient (>1) and that the value is interpolated, not a fresh MC run.",
+      "files": []
+    },
+    {
+      "id": 1,
+      "name": "composition-sweep-plot",
+      "prompt": "For natural-lithium FLiBe (Li-6 around 7.5%), I want to see how the tritium breeding ratio changes as I increase the BeF2 content of the salt from 30 up to 46 mol%. Can you compute that sweep and make me a plot?",
+      "expected_output": "A CSV/table of TBR vs BeF2 mol% at Li-6=0.075 and a PNG plot. TBR should increase modestly with BeF2 (~1.19 -> ~1.22). Trend described.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "name": "out-of-grid-guardrail",
+      "prompt": "What's the tritium breeding ratio for FLiBe with 60 mol% BeF2 at 50% Li-6 enrichment? Mimic the Shift simulation result.",
+      "expected_output": "Should recognize 60 mol% BeF2 (multiplier ~1.8) is outside the simulated grid (valid 30-46.67 mol%) and decline to report a grid-backed number, explaining the valid range / offering cautious extrapolation rather than inventing a value.",
+      "files": []
+    }
+  ]
+}

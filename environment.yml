@@ -1,0 +1,16 @@
+# Minimal conda environment for the salt-neutronics TBR skill.
+#
+# This analysis is pure post-processing (read HDF5, interpolate, plot) and needs
+# no GPU, PyTorch, OpenMM, or MACE -- those belonged to an unrelated molecular
+# dynamics workflow and have been removed to keep the environment small and fast
+# to create on an HPC login node.
+name: salt-neutronics
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - numpy
+  - scipy
+  - h5py
+  - matplotlib-base
+  - pytest
