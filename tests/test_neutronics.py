@@ -17,7 +17,14 @@ from salt_neutronics.composition import (
     bef2_molpct_to_be_multiplier,
     be_multiplier_to_bef2_molpct,
 )
-from salt_neutronics.processor import DEFAULT_DATA_FILE, TRITIUM_ZAID
+from salt_neutronics.processor import (
+    DEFAULT_DATA_FILE,
+    MAGNET_FLUX_PREFERRED_N_PER_CM2_S,
+    MAGNET_FLUX_REJECT_N_PER_CM2_S,
+    SHIELDING_THICKNESS_CM,
+    TRITIUM_ZAID,
+    shielding_verdict,
+)
 
 
 @pytest.fixture(scope="module")
@@ -149,3 +156,29 @@ def test_boundary_composition_not_nan(proc: ShiftFlibeProcessor) -> None:
 def test_composition_rejects_invalid() -> None:
     with pytest.raises(ValueError):
         bef2_molpct_to_be_multiplier(150.0)
+
+
+# --- radiation shielding (magnet flux) ------------------------------------- #
+
+def test_shielding_flux_is_flux_at_reference_thickness(proc: ShiftFlibeProcessor) -> None:
+    """The magnet shielding flux is the neutron flux at the blanket back face (default 1 m)."""
+    assert SHIELDING_THICKNESS_CM == 100.0
+    got = float(proc.shielding_flux(0.5, 1.0))
+    expected = float(proc.flux_interp(SHIELDING_THICKNESS_CM, 0.5, 1.0))
+    assert got == pytest.approx(expected)
+    assert got > 0.0
+
+
+def test_shielding_flux_respects_thickness(proc: ShiftFlibeProcessor) -> None:
+    """A thinner blanket shields less, so the magnet sees a higher (or equal) flux."""
+    thin = float(proc.shielding_flux(0.5, 1.0, thickness_cm=20.0))
+    thick = float(proc.shielding_flux(0.5, 1.0, thickness_cm=100.0))
+    assert thin >= thick
+
+
+def test_shielding_verdict_thresholds() -> None:
+    assert shielding_verdict(MAGNET_FLUX_REJECT_N_PER_CM2_S * 10) == "reject"
+    assert shielding_verdict(MAGNET_FLUX_PREFERRED_N_PER_CM2_S / 10) == "preferred"
+    # Between the two thresholds is acceptable.
+    mid = (MAGNET_FLUX_REJECT_N_PER_CM2_S + MAGNET_FLUX_PREFERRED_N_PER_CM2_S) / 2
+    assert shielding_verdict(mid) == "acceptable"

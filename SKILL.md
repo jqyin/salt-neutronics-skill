@@ -80,6 +80,11 @@ The JSON report contains everything needed to interpret and cite the result:
   "input_composition": {"bef2_mol_percent": 40.0, "lif_mol_percent": 60.0, "li6_enrichment": 0.5},
   "derived": {"beryllium_multiplier": 1.2, "nominal_bef2_mol_percent": 33.33},
   "result": {"tbr": 1.3794, "interpretation": "TBR = 1.3794 >= 1.0: ... self-sufficient ..."},
+  "shielding": {
+    "magnet_flux_n_per_cm2_s": 2.44e11, "thickness_cm": 100.0,
+    "reject_above_n_per_cm2_s": 1e12, "preferred_at_or_below_n_per_cm2_s": 1e10,
+    "verdict": "acceptable", "acceptable": true
+  },
   "provenance": {
     "method": "linear interpolation of a precomputed Shift Monte Carlo table",
     "is_interpolated": true, "is_extrapolated": false,
@@ -119,6 +124,10 @@ python -m salt_neutronics.cli sweep --bef2-range 30 46 40 --li6-range 0.07 1.0 4
 
 # Neutron flux at a spatial position (cm) for one composition
 python -m salt_neutronics.cli flux --position 15 --bef2 33.3 --li6 0.075 --json
+
+# Magnet radiation-shielding flux at the blanket back face (default 100 cm = 1 m)
+python -m salt_neutronics.cli shielding --bef2 33.3 --li6 0.5 --json
+python -m salt_neutronics.cli shielding --bef2 33.3 --li6 0.5 --thickness 80 --json
 
 # Number density of a nuclide by ZAID (1003 = tritium, 8016 = O-16, ...)
 python -m salt_neutronics.cli density --zaid 1003 --position 15 --bef2 33.3 --li6 0.5 --json
@@ -173,6 +182,23 @@ simulation. Then read the physics:
 - Remember this is an **emulation by interpolation**, not a fresh transport solve.
   Don't claim Monte Carlo statistical uncertainties; the limiting error is
   interpolation between grid points.
+
+### Magnet radiation shielding
+
+The `tbr` report also carries a `shielding` block, and `shielding` is a standalone query.
+It is the **neutron flux reaching the superconducting magnets** behind the blanket —
+`flux` at the blanket back face (default the 1 m reference depth), interpolated to the
+composition. **Lower is better** (a more strongly shielding blanket). Read
+`shielding.verdict`:
+
+- **`reject`** — flux **> 1e12 n/cm²·s** at 1 m: the fast-neutron dose damages the magnets
+  over the plant lifetime. The composition is **too weakly shielding and must be rejected**.
+- **`preferred`** — flux **≤ 1e10 n/cm²·s**: the long-magnet-life target. Many FLiBe
+  compositions cannot reach it, so this is aspirational rather than required.
+- **`acceptable`** — in between; usable but not ideal.
+
+Shielding improves with blanket thickness and with stronger neutron absorption (higher
+Li-6 enrichment), so it trades against — and should be reported alongside — the TBR.
 
 ## Reference material
 

@@ -31,7 +31,13 @@ from .composition import (
     be_multiplier_to_bef2_molpct,
     lif_molpct_from_bef2,
 )
-from .processor import ShiftFlibeProcessor
+from .processor import (
+    MAGNET_FLUX_PREFERRED_N_PER_CM2_S,
+    MAGNET_FLUX_REJECT_N_PER_CM2_S,
+    SHIELDING_THICKNESS_CM,
+    ShiftFlibeProcessor,
+    shielding_verdict,
+)
 
 
 # --------------------------------------------------------------------------- #
@@ -86,6 +92,25 @@ def _interpretation(tbr: float) -> str:
     )
 
 
+def _shielding_block(
+    proc: ShiftFlibeProcessor,
+    li6: float,
+    mult: float,
+    thickness_cm: float = SHIELDING_THICKNESS_CM,
+) -> dict[str, Any]:
+    """Magnet radiation-shielding assessment: flux at the blanket back face + a verdict."""
+    flux = float(proc.shielding_flux(li6, mult, thickness_cm))
+    verdict = shielding_verdict(flux)
+    return {
+        "magnet_flux_n_per_cm2_s": flux,
+        "thickness_cm": thickness_cm,
+        "reject_above_n_per_cm2_s": MAGNET_FLUX_REJECT_N_PER_CM2_S,
+        "preferred_at_or_below_n_per_cm2_s": MAGNET_FLUX_PREFERRED_N_PER_CM2_S,
+        "verdict": verdict,
+        "acceptable": verdict != "reject",
+    }
+
+
 def _build_report(
     proc: ShiftFlibeProcessor, bef2: float, mult: float, li6: float, nominal_bef2: float
 ) -> dict[str, Any]:
@@ -107,6 +132,7 @@ def _build_report(
             "tbr": tbr,
             "interpretation": _interpretation(tbr),
         },
+        "shielding": _shielding_block(proc, li6, mult),
         "provenance": {
             "method": "linear interpolation of a precomputed Shift Monte Carlo table",
             "is_interpolated": in_bounds,
@@ -142,6 +168,15 @@ def _emit(report: dict[str, Any], as_json: bool) -> None:
     print("-" * 64)
     print(f"  TBR                 : {res['tbr']:.4f}   [{mode}]")
     print(f"  {res['interpretation']}")
+    sh = report.get("shielding")
+    if sh:
+        print("-" * 64)
+        print(
+            f"  Magnet shield flux  : {sh['magnet_flux_n_per_cm2_s']:.3e} n/cm^2-s "
+            f"@ {sh['thickness_cm']:g} cm   [{sh['verdict'].upper()}]"
+        )
+        if not sh["acceptable"]:
+            print(f"  REJECT: flux exceeds {sh['reject_above_n_per_cm2_s']:.0e} — shielding too weak.")
     print("=" * 64)
 
 
@@ -224,6 +259,26 @@ def cmd_flux(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_shielding(args: argparse.Namespace) -> int:
+    proc = ShiftFlibeProcessor(args.data, allow_extrapolation=args.allow_extrapolation)
+    mult, bef2 = _resolve_multiplier(args)
+    _guard_single_point(proc, args.li6, mult, args.nominal_bef2, args.allow_extrapolation)
+    block = _shielding_block(proc, args.li6, mult, args.thickness)
+    report = {
+        "quantity": "magnet_shielding_flux",
+        "input_composition": {"bef2_mol_percent": bef2, "li6_enrichment": args.li6},
+        "derived": {"beryllium_multiplier": mult},
+        "result": block,
+    }
+    _emit_simple(
+        report,
+        args.json,
+        f"Magnet shielding flux = {block['magnet_flux_n_per_cm2_s']:.6e} n/cm^2-s "
+        f"@ {block['thickness_cm']:g} cm blanket -> {block['verdict'].upper()}",
+    )
+    return 0
+
+
 def cmd_density(args: argparse.Namespace) -> int:
     proc = ShiftFlibeProcessor(args.data, allow_extrapolation=args.allow_extrapolation)
     mult, bef2 = _resolve_multiplier(args)
@@ -290,6 +345,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_flux = sub.add_parser("flux", help="Neutron flux at a position for one composition.")
     _add_common(p_flux, with_position=True)
     p_flux.set_defaults(func=cmd_flux)
+
+    p_shield = sub.add_parser(
+        "shielding", help="Magnet radiation-shielding flux at the blanket back face."
+    )
+    _add_common(p_shield)
+    p_shield.add_argument(
+        "--thickness", type=float, default=SHIELDING_THICKNESS_CM,
+        help="Blanket thickness in cm at which to evaluate the magnet flux (default: 100 = 1 m).",
+    )
+    p_shield.set_defaults(func=cmd_shielding)
 
     p_density = sub.add_parser("density", help="Number density of a nuclide (ZAID) at a position.")
     _add_common(p_density, with_position=True)

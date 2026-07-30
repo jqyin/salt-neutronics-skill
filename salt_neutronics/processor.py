@@ -30,12 +30,47 @@ import numpy as np
 from numpy.typing import ArrayLike, NDArray
 from scipy.interpolate import RegularGridInterpolator
 
-__all__ = ["ShiftFlibeProcessor", "GridBounds", "TRITIUM_ZAID", "DEFAULT_DATA_FILE"]
+__all__ = [
+    "ShiftFlibeProcessor",
+    "GridBounds",
+    "TRITIUM_ZAID",
+    "DEFAULT_DATA_FILE",
+    "MAGNET_FLUX_REJECT_N_PER_CM2_S",
+    "MAGNET_FLUX_PREFERRED_N_PER_CM2_S",
+    "SHIELDING_THICKNESS_CM",
+    "shielding_verdict",
+]
 
 logger = logging.getLogger(__name__)
 
 #: ZAID (1000*Z + A) of tritium / hydrogen-3, the bred nuclide of interest.
 TRITIUM_ZAID = 1003
+
+#: Magnet radiation-shielding limits on the neutron flux (n/cm^2-s) that reaches the
+#: superconducting toroidal-field magnets behind the blanket. The Shift study resolves
+#: flux vs. blanket depth, so the flux at the blanket back face is the shielding metric.
+#: Above ~1e12 (evaluated at a 1 m blanket) the fast-neutron dose damages the magnets over
+#: the plant lifetime, so such a composition is rejected as too weakly shielding; ~1e10 is
+#: the preferred (long magnet life) target, which many FLiBe compositions cannot reach.
+MAGNET_FLUX_REJECT_N_PER_CM2_S = 1.0e12
+MAGNET_FLUX_PREFERRED_N_PER_CM2_S = 1.0e10
+
+#: Reference blanket thickness (cm) at which the magnet shielding flux is evaluated. The
+#: Shift mesh spans 0-100 cm, so 100 cm = the 1 m reference the reject threshold is defined at.
+SHIELDING_THICKNESS_CM = 100.0
+
+
+def shielding_verdict(flux: float) -> str:
+    """Classify a magnet shielding flux (n/cm^2-s) against the damage thresholds.
+
+    Returns ``"reject"`` (too weakly shielding — over the damage limit), ``"preferred"``
+    (at/under the long-magnet-life target), or ``"acceptable"`` (in between).
+    """
+    if flux > MAGNET_FLUX_REJECT_N_PER_CM2_S:
+        return "reject"
+    if flux <= MAGNET_FLUX_PREFERRED_N_PER_CM2_S:
+        return "preferred"
+    return "acceptable"
 
 #: Absolute tolerance for snapping a query coordinate onto a grid boundary. This
 #: absorbs floating-point noise (e.g. 30 mol% BeF2 -> 0.8999999999999999, which
@@ -331,6 +366,23 @@ class ShiftFlibeProcessor:
         li6, be_mult = self._snap_to_grid(li6, be_mult)
         points = self._stack_points(li6, be_mult)
         return interp(points).reshape(out_shape)
+
+    def shielding_flux(
+        self,
+        li6: ArrayLike,
+        be_mult: ArrayLike,
+        thickness_cm: float = SHIELDING_THICKNESS_CM,
+    ) -> NDArray[np.float64]:
+        """Neutron flux reaching the magnets behind ``thickness_cm`` of blanket.
+
+        This is the radiation-shielding metric for magnet protection: the flux in the mesh
+        cell at the blanket back face (default the 1 m reference depth), interpolated to
+        ``(li6, be_mult)``. Lower is better — a more strongly shielding blanket lets less
+        fast-neutron flux through to the superconducting magnets. Compare against
+        :data:`MAGNET_FLUX_REJECT_N_PER_CM2_S` / :data:`MAGNET_FLUX_PREFERRED_N_PER_CM2_S`
+        (or use :func:`shielding_verdict`).
+        """
+        return self.flux_interp(thickness_cm, li6, be_mult)
 
     def zaid_cell_interp(
         self, zaid: int, position: float, li6: ArrayLike, be_mult: ArrayLike
